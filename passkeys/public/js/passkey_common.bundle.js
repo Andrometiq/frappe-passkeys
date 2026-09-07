@@ -121,6 +121,31 @@
 		return out;
 	}
 
+	// Serialize a live PublicKeyCredential attestation to RegistrationResponseJSON.
+	function registrationResponseToJSON(cred) {
+		if (cred && typeof cred.toJSON === "function") {
+			return cred.toJSON();
+		}
+		var r = cred.response;
+		var response = {
+			clientDataJSON: bytesToB64url(r.clientDataJSON),
+			attestationObject: bytesToB64url(r.attestationObject),
+		};
+		if (typeof r.getTransports === "function") response.transports = r.getTransports();
+		var out = {
+			id: cred.id,
+			rawId: bytesToB64url(cred.rawId),
+			type: cred.type,
+			clientExtensionResults:
+				typeof cred.getClientExtensionResults === "function"
+					? cred.getClientExtensionResults()
+					: {},
+			response: response,
+		};
+		if (cred.authenticatorAttachment) out.authenticatorAttachment = cred.authenticatorAttachment;
+		return out;
+	}
+
 	// ---------------------------------------------------- feature detection
 	// Layered, never a single signal (the iOS 26.2 isUVPAA regression class):
 	//   window.PublicKeyCredential defined -> getClientCapabilities() (absent key = UNKNOWN,
@@ -1007,6 +1032,7 @@
 		bytesToB64url: bytesToB64url,
 		parseRequestOptionsFromJSON: parseRequestOptionsFromJSON,
 		authAssertionToJSON: authAssertionToJSON,
+		registrationResponseToJSON: registrationResponseToJSON,
 		detectCapabilities: detectCapabilities,
 		mapDomException: mapDomException,
 		mapServerExcType: mapServerExcType,

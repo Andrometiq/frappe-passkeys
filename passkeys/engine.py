@@ -4,10 +4,11 @@
 """WebAuthn engine — py_webauthn options/verify wrappers + app-side policy
 (folds into ``frappe/passkey.py``).
 
-This is the crypto core. It is imported **lazily inside ceremony endpoint
-bodies only** (hook-path import discipline): a broken ``webauthn`` /
+This is the crypto core. In serving workers it is imported **lazily inside
+ceremony endpoint bodies only** (hook-path import discipline): a broken ``webauthn`` /
 ``cryptography`` wheel must never take down the ``on_login`` / boot chains, so
 the top-level ``import webauthn`` lives here and nowhere a hook can reach.
+Mode-enable validation probes this module in an isolated child process.
 
 Normative py_webauthn (>=2.8,<3) behaviors honored here (proven, not
 re-derived — see the golden-vector pack in ``passkeys/tests/vectors/``):

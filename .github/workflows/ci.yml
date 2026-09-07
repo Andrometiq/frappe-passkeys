@@ -66,6 +66,9 @@ jobs:
       - name: Import-graph gate (all hook and dormancy modules)
         run: bash .github/helper/import_gate.sh
 
+      - name: Server-test process gate self-tests
+        run: python .github/helper/test_server_test_gate.py
+
   server-tests:
     name: Server (frappe ${{ matrix.frappe-branch }})
     runs-on: ubuntu-24.04
@@ -148,7 +151,7 @@ jobs:
 
       - name: Run server tests
         working-directory: /home/runner/frappe-bench
-        run: bench --site test_site run-tests --app passkeys
+        run: bash "${GITHUB_WORKSPACE}/.github/helper/run_server_tests.sh" test_site
 
       - name: Show bench logs
         if: failure()

@@ -113,7 +113,9 @@ chromium_only("passkey management — User form", () => {
 				.first()
 				.clear()
 				.type("My laptop");
-			cy.get(".modal-dialog .btn-primary").contains("Save").click();
+			cy.get(".modal-dialog:visible")
+				.contains(".btn-modal-primary, .btn-primary", "Save")
+				.click();
 			own_passkey_root().find(".passkey-card .passkey-card-label", { timeout: 20000 }).should("contain.text", "My laptop");
 		});
 	});
@@ -151,7 +153,9 @@ chromium_only("passkey management — User form", () => {
 			visit_user_passkeys();
 			own_passkey_root().find(".passkey-card", { timeout: 20000 }).should("have.length", 2);
 			own_passkey_root().find(".passkey-card .passkey-delete").first().click();
-			cy.get(".modal-dialog .btn-primary").contains("Remove passkey").click();
+			cy.get(".modal-dialog:visible")
+				.contains(".btn-modal-primary, .btn-primary", "Remove passkey")
+				.click();
 			own_passkey_root().find(".passkey-card", { timeout: 20000 }).should("have.length", 1);
 		});
 
@@ -161,7 +165,9 @@ chromium_only("passkey management — User form", () => {
 			// expire the fresh-login window so delete must re-confirm
 			cy.call(CLEAR_SUDO, {});
 			own_passkey_root().find(".passkey-card .passkey-delete", { timeout: 20000 }).first().click();
-			cy.get(".modal-dialog .btn-primary").contains("Remove passkey").click();
+			cy.get(".modal-dialog:visible")
+				.contains(".btn-modal-primary, .btn-primary", "Remove passkey")
+				.click();
 			// the sudo dance dialog appears — a passkeys.manage confirmation
 			cy.get(".passkey-confirm-passkey", { timeout: 20000 }).should("be.visible").click();
 			// virtual authenticator auto-UV completes the ceremony → credential removed

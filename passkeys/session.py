@@ -134,12 +134,13 @@ def _classify_login_method() -> str:
 
 
 def _is_core_password_login() -> bool:
-	request = getattr(frappe.local, "request", None)
-	if request is not None and getattr(request, "path", None) == "/api/method/login":
-		return True
 	form = getattr(frappe.local, "form_dict", None)
+	cmd = form.get("cmd") if form is not None else None
 	# v15/v16 additionally trigger core login on cmd=login (login-trigger row).
-	return bool(form is not None and form.get("cmd") == "login")
+	if cmd:
+		return cmd == "login"
+	request = getattr(frappe.local, "request", None)
+	return request is not None and getattr(request, "path", None) == "/api/method/login"
 
 
 # ---------------------------------------------------------------------------

@@ -141,7 +141,7 @@
 			options.extensions = Object.assign({}, options.extensions || {}, { credProps: true });
 			return navigator.credentials.create({ publicKey: options }).then(function (cred) {
 				if (!cred) throw friendly("addFailed");
-				var payload = cred.toJSON ? cred.toJSON() : C.authAssertionToJSON(cred);
+				var payload = C.registrationResponseToJSON(cred);
 				return post(METHODS.verifyRegistration, {
 					state_id: begin.state_id,
 					credential: JSON.stringify(payload),
@@ -730,7 +730,7 @@
 			}).then(function (cred) {
 				_conditionalCreateAbort = null;
 				if (!cred) return;
-				var payload = cred.toJSON ? cred.toJSON() : C.authAssertionToJSON(cred);
+				var payload = C.registrationResponseToJSON(cred);
 				post(METHODS.verifyRegistration, { state_id: begin.state_id, credential: JSON.stringify(payload) }).then(function (v) {
 					if (v && v.ok) fireSignal(unwrap(v.body));
 				});

@@ -317,10 +317,14 @@ fallback). Rate limit: **5 / 300 s / user**.
   (`"shown"` / `"declined"` / `"opt_out"`) into per-user cadence state; best-effort
   telemetry, safe to omit. Rate limit: 30 / 3600 s / user.
 - **`passkeys.passkey.record_enforcement`** — records `"defer"` or `"incapable"`. A defer consumes
-  at most one grace login per user/session, atomically across tabs/workers. Rate limit: 30 / 3600 s
-  / user.
+  at most one grace login per user/session, atomically across tabs/workers, while the server's
+  current verdict allows grace. Events from exempt, out-of-scope, or already-enrolled users
+  leave enforcement state unchanged. Incapability alerts require the applicable Block + Notify
+  Admin policy. Rate limit: 30 / 3600 s / user.
 - **`passkeys.passkey.get_app_translations`** (`GET`) — the app's i18n catalog, for
-  rendering the shipped copy on v15/v16 pages. Rate limit: 30 / 60 s / IP.
+  rendering the shipped copy on v15/v16 pages. Responses are private and not stored in the
+  browser cache because the request's language can change without changing the URL. The optional
+  `version` argument remains accepted but does not enable immutable caching. Rate limit: 30 / 60 s / IP.
 
 ---
 

@@ -239,7 +239,7 @@ class FakeWebAuthnTestModeTest(IntegrationTestCase):
 			if callable(fn) and fn in frappe.whitelisted
 		}
 		non_post_only = {
-			fn for fn in helpers if frappe.allowed_http_methods_for_whitelisted_func[fn] != ["POST"]
+			fn for fn in helpers if tuple(frappe.allowed_http_methods_for_whitelisted_func[fn]) != ("POST",)
 		}
 		self.assertEqual(
 			non_post_only,

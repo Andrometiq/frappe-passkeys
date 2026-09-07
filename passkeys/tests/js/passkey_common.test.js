@@ -126,6 +126,60 @@ test("authAssertionToJSON prefers native toJSON, else builds AuthenticationRespo
 	assert.strictEqual(j.response.userHandle, C.bytesToB64url(new Uint8Array([40])));
 });
 
+test("registrationResponseToJSON prefers callable native toJSON", () => {
+	const native = { id: "native", response: { attestationObject: "native" } };
+	assert.strictEqual(C.registrationResponseToJSON({ toJSON() { return native; } }), native);
+});
+
+test("registrationResponseToJSON builds only RegistrationResponseJSON fields", () => {
+	const credential = {
+		id: "registration-id",
+		rawId: new Uint8Array([1, 2]).buffer,
+		type: "public-key",
+		authenticatorAttachment: "platform",
+		getClientExtensionResults() { return { credProps: { rk: true } }; },
+		response: {
+			clientDataJSON: new Uint8Array([10]).buffer,
+			attestationObject: new Uint8Array([20, 30]).buffer,
+			getTransports() { return ["internal", "hybrid"]; },
+			authenticatorData: new Uint8Array([40]).buffer,
+			signature: new Uint8Array([50]).buffer,
+			userHandle: new Uint8Array([60]).buffer,
+		},
+	};
+	assert.deepStrictEqual(C.registrationResponseToJSON(credential), {
+		id: "registration-id",
+		rawId: "AQI",
+		type: "public-key",
+		authenticatorAttachment: "platform",
+		clientExtensionResults: { credProps: { rk: true } },
+		response: {
+			clientDataJSON: "Cg",
+			attestationObject: "FB4",
+			transports: ["internal", "hybrid"],
+		},
+	});
+});
+
+test("registrationResponseToJSON tolerates older optional-method absence", () => {
+	const json = C.registrationResponseToJSON({
+		id: "older",
+		rawId: new Uint8Array([1]).buffer,
+		type: "public-key",
+		response: {
+			clientDataJSON: new Uint8Array([2]).buffer,
+			attestationObject: new Uint8Array([3]).buffer,
+		},
+	});
+	assert.deepStrictEqual(json, {
+		id: "older",
+		rawId: "AQ",
+		type: "public-key",
+		clientExtensionResults: {},
+		response: { clientDataJSON: "Ag", attestationObject: "Aw" },
+	});
+});
+
 // -------------------------------------------------- feature detection (layered)
 test("detectCapabilities: getClientCapabilities absent key stays UNKNOWN (null), not false", async () => {
 	const fakePKC = {

@@ -134,11 +134,11 @@ def _consume_allowed_otp_fallback(user: str) -> bool:
 	but only on its own login route.
 	"""
 	form = getattr(frappe.local, "form_dict", None)
-	request = getattr(frappe.local, "request", None)
-	path = getattr(request, "path", None) if request is not None else None
 	if form is None or not form.get("otp"):
 		return False
-	if path != "/api/method/login" and form.get("cmd") != "login":
+	from passkeys.session import _is_core_password_login
+
+	if not _is_core_password_login():
 		return False
 	tmp_id = form.get("tmp_id")
 	if not tmp_id:

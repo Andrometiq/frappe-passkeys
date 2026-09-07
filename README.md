@@ -87,7 +87,7 @@ origin set, and verify that the set is non-empty. The RP ID is credential scope,
 
 | Frappe | Supported | Notes |
 | --- | --- | --- |
-| **v15** | v15.107.0 and newer | The `webauthn` library needs `cryptography>=46` **and** `pyOpenSSL>=26`, which v15 ships together only from v15.107.0. A `before_install` guard aborts on anything older with a clear message. |
+| **v15** | v15.108.0 and newer | The `before_install` guard requires the security fixes in v15.108.0 as well as `cryptography>=46` and `pyOpenSSL>=26`. |
 | **v16** | Candidate branch | Use `version-16`; release CI tests a pinned Frappe baseline. Re-run the candidate against the exact Frappe patch level you deploy. |
 | **develop** | Integration target | Pre-release Frappe integration only. Daily moving-tip runs fail visibly on drift but are compatibility signals, not release attestations. |
 

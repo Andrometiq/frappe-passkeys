@@ -10,7 +10,7 @@ from unittest.mock import patch
 import frappe
 from frappe.utils import add_to_date, cint, now_datetime, nowdate
 
-from passkeys import boot, enforcement_admin, notifications, passkey
+from passkeys import boot, enforcement_admin, notifications, passkey, state
 from passkeys.install import DEFAULTS_PARENT
 from passkeys.tests.compat import IntegrationTestCase, flush_settings_cache
 from passkeys.tests.factories import make_credential, make_user
@@ -254,18 +254,102 @@ class EnforcementVerdictTest(IntegrationTestCase):
 		self.assertEqual(second["enforcement_state"]["grace_used"], 1)
 		self.assertEqual(boot.get_enforcement_state(user)["grace_used"], 1)
 
+	def test_record_enforcement_ignores_off_nudge_and_future_date(self):
+		policies = (
+			("Off", None),
+			("Nudge", None),
+			("Enforce After Date", add_to_date(nowdate(), days=7)),
+		)
+		for enrollment_policy, enforce_after in policies:
+			with self.subTest(policy=enrollment_policy):
+				self._set(
+					passkey_enrollment_policy=enrollment_policy,
+					passkey_enforce_after=enforce_after,
+				)
+				user = self._user()
+				boot.record_enforcement_event(user, "defer")
+				frappe.set_user(user)
+				with (
+					patch.object(state, "claim_enforcement_defer") as claim_defer,
+					patch.object(notifications, "record_enforcement_incapable") as report_incapable,
+				):
+					defer = passkey.record_enforcement("defer")
+					incapable = passkey.record_enforcement("incapable")
+				claim_defer.assert_not_called()
+				report_incapable.assert_not_called()
+				self.assertEqual(defer["enforcement_state"], {"grace_used": 1})
+				self.assertEqual(incapable["enforcement_state"], {"grace_used": 1})
+				self.assertEqual(boot.get_enforcement_state(user), {"grace_used": 1})
+
+	def test_record_enforcement_ignores_exempt_and_out_of_role_users(self):
+		self._set(passkey_enforce_scope="Selected Roles")
+		self._set_enforced_roles("Sales User")
+		out_of_role = self._user()
+		exempt = self._user(roles=["Sales User"])
+		enforcement_admin.set_user_exemption(exempt, True)
+		for user in (out_of_role, exempt):
+			with self.subTest(user=user):
+				frappe.set_user(user)
+				with (
+					patch.object(state, "claim_enforcement_defer") as claim_defer,
+					patch.object(notifications, "record_enforcement_incapable") as report_incapable,
+				):
+					passkey.record_enforcement("defer")
+					passkey.record_enforcement("incapable")
+				claim_defer.assert_not_called()
+				report_incapable.assert_not_called()
+				self.assertEqual(boot.get_enforcement_state(user), {"grace_used": 0})
+
+	def test_record_enforcement_ignores_enrolled_user(self):
+		user = self._user()
+		make_credential(user)
+		frappe.set_user(user)
+		with (
+			patch.object(state, "claim_enforcement_defer") as claim_defer,
+			patch.object(notifications, "record_enforcement_incapable") as report_incapable,
+		):
+			passkey.record_enforcement("defer")
+			passkey.record_enforcement("incapable")
+		claim_defer.assert_not_called()
+		report_incapable.assert_not_called()
+		self.assertEqual(boot.get_enforcement_state(user), {"grace_used": 0})
+
+	def test_record_enforcement_does_not_defer_after_grace_is_exhausted(self):
+		self._set(passkey_enforce_grace_logins=1)
+		user = self._user()
+		boot.record_enforcement_event(user, "defer")
+		frappe.set_user(user)
+		with patch.object(state, "claim_enforcement_defer") as claim_defer:
+			result = passkey.record_enforcement("defer")
+		claim_defer.assert_not_called()
+		self.assertEqual(result["enforcement_state"]["grace_used"], 1)
+
 	def test_record_enforcement_incapable_returns_state(self):
 		user = self._user()
 		frappe.set_user(user)
-		# Degrade policy ⇒ no admin advisory; still returns the (unchanged) state.
-		result = passkey.record_enforcement("incapable")
+		with patch.object(notifications, "record_enforcement_incapable") as report_incapable:
+			result = passkey.record_enforcement("incapable")
+		report_incapable.assert_not_called()
 		self.assertEqual(cint(result["enforcement_state"]["grace_used"]), 0)
+		self.assertFalse(frappe.db.exists("DefaultValue", {"defkey": f"{user}_passkey_enforce"}))
+
+	def test_blocking_incapable_report_is_still_applicable(self):
+		self._set(passkey_enforce_grace_logins=0, passkey_enforce_incapable="Block + Notify Admin")
+		user = self._user()
+		frappe.set_user(user)
+		with patch.object(notifications, "record_enforcement_incapable") as report_incapable:
+			passkey.record_enforcement("incapable")
+		report_incapable.assert_called_once_with(user)
 
 	def test_incapable_under_block_notify_records_admin_advisory(self):
 		self._set(passkey_enforce_incapable="Block + Notify Admin")
 		user = self._user()
 		frappe.set_user(user)
-		passkey.record_enforcement("incapable")
+		with (
+			patch.object(notifications, "_system_manager_emails", return_value=["mgr@example.com"]),
+			patch("frappe.sendmail"),
+		):
+			passkey.record_enforcement("incapable")
 		frappe.set_user("Administrator")
 		self.assertTrue(
 			frappe.db.exists("Activity Log", {"user": user, "content": "passkeys:enforce_incapable_device"})

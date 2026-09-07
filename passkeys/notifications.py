@@ -135,11 +135,8 @@ def record_risk_event(event: str, user: str, detail: str | None = None) -> None:
 
 
 def record_enforcement_incapable(user: str) -> None:
-	"""The ``Block + Notify Admin`` half of the incapable-device escape hatch: a user in
-	scope for passkey enrollment enforcement reported their device cannot create a
-	passkey. Record an Activity Log risk event (**always** — telemetry) and best-effort
-	email the System Managers so they can grant an exemption or issue a security key. The
-	admin email is **deduped server-side** to at most one per user per 24h
+	"""Record an in-scope Block + Notify Admin report and advise administrators.
+	The admin email is **deduped server-side** to at most one per user per 24h
 	(:data:`INCAPABLE_NOTIFY_WINDOW_SEC`): the client once-guard resets each page load, so
 	the dedup is what stops a single incapable user flooding admins one email per page view.
 	Non-blocking — a mail/log failure must never break the interstitial."""
@@ -150,6 +147,7 @@ def record_enforcement_incapable(user: str) -> None:
 	except Exception:
 		frappe.log_error(title="passkeys: enforcement-incapable audit failed")
 	try:
+		frappe.db.get_value("User", user, "name", for_update=True)
 		if _incapable_notified_recently(user):
 			return  # admins already advised within the window; the Activity Log still recorded
 		managers = [m for m in _system_manager_emails() if m and m != user]
@@ -159,8 +157,9 @@ def record_enforcement_incapable(user: str) -> None:
 				subject=_("A user cannot satisfy passkey enrollment enforcement"),
 				message=_(
 					"{0} is required to register a passkey to keep signing in, but reports that"
-					" their device cannot create one. Consider granting an exemption (add one of"
-					" their roles to the exempt list) or issuing a hardware security key."
+					" their device cannot create one. Consider granting this user an exemption"
+					" from the Passkeys section of their User form, resetting their grace budget,"
+					" or issuing a hardware security key."
 				).format(user),
 				now=False,
 			)
@@ -177,7 +176,12 @@ def _incapable_notified_recently(user: str) -> bool:
 	"""True iff an incapable-device admin advisory was emailed for ``user`` within the
 	dedup window. Absent/malformed marker ⇒ False (fail open to sending — a bad row must
 	never permanently silence the advisory)."""
-	raw = frappe.db.get_default(_incapable_notify_key(user), parent=DEFAULTS_PARENT)
+	raw = frappe.db.get_value(
+		"DefaultValue",
+		{"parent": DEFAULTS_PARENT, "defkey": _incapable_notify_key(user)},
+		"defvalue",
+		for_update=True,
+	)
 	if not raw:
 		return False
 	try:
