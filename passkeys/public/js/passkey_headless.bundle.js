@@ -106,7 +106,7 @@
 			options.extensions = Object.assign({}, options.extensions || {}, { credProps: true });
 			return navigator.credentials.create({ publicKey: options }).then(function (cred) {
 				if (!cred) return rejectNamed("NotAllowedError", "no credential");
-				return cred.toJSON ? cred.toJSON() : C.authAssertionToJSON(cred);
+				return C.registrationResponseToJSON(cred);
 			});
 		}
 

@@ -52,6 +52,11 @@ Any native proposal must preserve or deliberately supersede these app guarantees
   may block a fresh install but must not silence an installed app.
 - Confirmation UI metadata uses explicit `display_label` and `display_params`; display parameters
   are a subset of bound parameters and never change grant binding.
+- Password-grade sudo and OTP fallback require the actual core-login dispatch; a matching URL
+  cannot override a command that dispatches another method.
+- Registration JSON fallbacks preserve attestation fields on browsers without native `toJSON`.
+- Mode enablement verifies engine importability without loading crypto into login or boot hooks;
+  this point-in-time check does not replace deployment health checks.
 - Production readiness is established per release candidate by the release checklist, not inferred
   from this proposal or a moving branch-tip test.
 

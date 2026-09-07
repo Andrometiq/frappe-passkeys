@@ -20,9 +20,12 @@ it does not repeat what `CONTRIBUTING.md` says.
 - **Hook-path import discipline is mandatory.** Any module reachable from an every-request hook
   chain — `on_login`, `on_session_creation`, `on_logout`, `after_request`, `extend_bootinfo`,
   `update_website_context`, `doc_events`, install/migrate — must NOT import `webauthn` (directly or
-  transitively). `webauthn` is imported lazily, inside ceremony endpoint bodies only, so a broken
-  crypto wheel can never take down login or boot. The only top-level `import webauthn` lives in
-  `engine.py`. `import_gate.sh` enforces this in CI — keep it green.
+  transitively). In the serving process, `webauthn` is imported lazily inside ceremony endpoint
+  bodies only, so a broken crypto wheel can never take down login or boot. The only top-level
+  `import webauthn` lives in
+  `engine.py`. Mode-enable validation probes the engine in a separate bounded process; it must not
+  import crypto into the serving worker. `import_gate.sh` enforces module-import isolation in CI —
+  keep it green.
 - All enforcement is **server-side**. The client may gate UI on site policy, but the real boundary
   is a whitelisted server check (`frappe.only_for(...)`, ownership ladders, veto hooks). Never
   trust a client-supplied identity or capability flag.
@@ -140,7 +143,7 @@ spaces. These rules apply to any change here:
 - Before a bug fix, find the root cause first — don't loosen a test to match new behavior.
 - Run the gates before pushing (exact invocations in `CONTRIBUTING.md` and `.github/workflows/ci.yml`):
   `pre-commit run --all-files` (ruff import-sort / lint / format — CI checks, does not fix);
-  `bench --site <site> run-tests --app passkeys` (Python server suite);
+  the server-test wrapper in `CONTRIBUTING.md` (Python suite plus result validation);
   `node --test passkeys/tests/js/*.test.js` (client-logic suite); and the Cypress run — keep
   `cypress.config.js` at `retries: 0` and `testIsolation: true`.
 - This repo is **public and upstream-bound**. Keep every committed file generic and free of secrets

@@ -119,6 +119,11 @@ password / passkey re-auth. A "weak" login (email link, social) seeds only the
 restricted first-passkey bootstrap when passwordless passkey login is enabled, never general
 management power.
 
+Password classification and OTP-fallback acceptance follow command dispatch precedence. A truthy
+`cmd` must be exactly `login`; only a request without a diverting command may rely on the canonical
+`/api/method/login` path. Redeeming an email-link key through that URL remains a weak login and
+cannot spend an OTP fallback marker.
+
 **Security invariants are transactionally locked.** Authentication locks the user and credential
 before counter/UV updates; registration locks the user, handle, and credential census before cap
 enforcement and insertion; credential deletion and passkey-only toggles share a locked login-floor

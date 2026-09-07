@@ -78,7 +78,7 @@
 	}
 
 	// ---------------------------------------------------------- i18n loader
-	// Fetch the app guest translations endpoint once, memoize, MERGE (never clobber) into
+	// Fetch the app guest translations endpoint and MERGE (never clobber) into
 	// frappe._messages. On develop, also await frappe._translations_loaded so the
 	// core catalog is in place before our first translated paint.
 	function loadAppTranslations() {
@@ -89,6 +89,7 @@
 		}
 		var appJob = fetch(methodUrl(API.app_translations), {
 			method: "GET",
+			cache: "no-store",
 			headers: { Accept: "application/json" },
 			credentials: "same-origin",
 		})
@@ -1020,6 +1021,7 @@
 			onPageShow: onPageShow,
 			secondFactorWebAuthnAvailable: secondFactorWebAuthnAvailable,
 			showSecondFactorUnavailable: showSecondFactorUnavailable,
+			loadAppTranslations: loadAppTranslations,
 		};
 	}
 })();

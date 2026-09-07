@@ -56,6 +56,8 @@ class PasskeySettings(Document):
 					"Cannot enable passkeys: the 'webauthn' python package is not installed in this bench. Run bench setup requirements for the passkeys app first."
 				)
 			)
+		if self._is_enabling_mode():
+			policy.validate_webauthn_importable()
 		rp_id = policy.resolve_rp_id(self)
 		if not rp_id:
 			frappe.throw(
@@ -71,6 +73,13 @@ class PasskeySettings(Document):
 					"Cannot enable passkeys: this site has no encryption_key. Create the site encryption key before enabling an authentication mode."
 				)
 			)
+
+	def _is_enabling_mode(self) -> bool:
+		previous = self.get_doc_before_save() or frappe.db.get_singles_dict("Passkey Settings")
+		return any(
+			cint(self.get(fieldname)) and not cint(previous.get(fieldname))
+			for fieldname in ("login_with_passkey", "passkey_as_second_factor")
+		)
 
 	def _validate_inactive_origins(self):
 		if self.passkey_origins:

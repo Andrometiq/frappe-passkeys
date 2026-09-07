@@ -160,16 +160,8 @@ def clear_counter(name: str) -> None:
 	frappe.cache.delete(_make_key(name))
 
 
-def record_password_failure(user: str) -> int:
-	return bump_counter(PASSWORD_FAILURE_PREFIX + user, PASSWORD_FAILURE_TTL)
-
-
 def claim_password_attempt(user: str) -> int:
 	return bump_counter(PASSWORD_FAILURE_PREFIX + user, PASSWORD_FAILURE_TTL)
-
-
-def is_password_throttled(user: str) -> bool:
-	return get_counter(PASSWORD_FAILURE_PREFIX + user) >= PASSWORD_FAILURE_LIMIT
 
 
 def clear_password_failures(user: str) -> None:

@@ -31,7 +31,9 @@ baselines; the moving-tip workflow fails visibly on drift but does not expand th
 range or attest a release candidate:
 
 ```bash
-bench --site <site> run-tests --app passkeys      # Python server suite
+# From the bench root: also verifies the runner's result, not just its exit status
+bash apps/passkeys/.github/helper/run_server_tests.sh <site>
+# From the app directory:
 node --test passkeys/tests/js/*.test.js            # dependency-free client-logic suite
 # Cypress end-to-end: see .github/workflows/ci.yml for the exact invocation
 ```

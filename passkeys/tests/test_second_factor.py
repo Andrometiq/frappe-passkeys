@@ -23,9 +23,9 @@ from frappe.auth import CookieManager
 from frappe.utils import set_request
 from frappe.utils.password import update_password
 
-from passkeys import auth_hooks, passkey, state
+from passkeys import auth_hooks, passkey, session, state
 from passkeys.api import registration
-from passkeys.passkey import CeremonyExpired
+from passkeys.passkey import CeremonyExpired, PasskeyConfirmationRequired
 from passkeys.tests.compat import IntegrationTestCase, WebAuthnAssertMixin, flush_settings_cache
 from passkeys.tests.factories import make_user
 from passkeys.tests.soft_authenticator import SoftAuthenticator, b64url, b64url_decode
@@ -411,20 +411,59 @@ class SecondFactorTest(WebAuthnAssertMixin, IntegrationTestCase):
 		with self.assertRaises(frappe.AuthenticationError):
 			self._run_login_veto(user, tmp_id=tmp_id, otp="123456")
 
-	def test_otp_marker_cannot_be_consumed_by_an_alternate_login_route(self):
+	def test_otp_marker_cannot_be_consumed_by_a_diverted_core_login_route(self):
 		user = self._user(otp_capable=True)
 		self._enroll(user)
 		tmp_id = frappe.generate_hash()
 		state.store_otp_fallback(tmp_id, {"v": 1, "user": user})
-		with self.assertRaises(frappe.AuthenticationError):
-			self._run_login_veto(
-				user,
-				path="/api/method/frappe.www.login.login_via_key",
-				tmp_id=tmp_id,
-				otp="attacker-controlled",
-			)
+		with patch("frappe.twofactor.should_run_2fa", return_value=True):
+			for path, cmd in (
+				("/api/method/frappe.www.login.login_via_key", None),
+				("/api/method/login", "frappe.www.login.login_via_key"),
+			):
+				with self.subTest(path=path), self.assertRaises(frappe.AuthenticationError):
+					self._run_login_veto(user, path=path, cmd=cmd, tmp_id=tmp_id, otp="invalid")
+		self.assertEqual(state.get_otp_fallback(tmp_id).get("user"), user)
 		# The rejected route did not burn the marker; a core OTP completion can use it.
 		self.assertIsNone(self._run_login_veto(user, tmp_id=tmp_id, otp="123456"))
+
+	def test_diverted_email_key_login_seeds_only_weak_sudo(self):
+		from frappe.auth import LoginManager
+		from frappe.handler import execute_cmd
+		from frappe.www.login import _generate_temporary_login_link
+
+		attacker = self._user()
+		victim = self._user()
+		self._enroll(victim)
+		self.addCleanup(
+			self._set_passkey_setting,
+			"passkey_allow_first_enrollment_on_weak_login",
+			frappe.db.get_single_value("Passkey Settings", "passkey_allow_first_enrollment_on_weak_login"),
+		)
+		self._set_passkey_setting("passkey_as_second_factor", 0)
+		self._set_passkey_setting("login_with_passkey", 1)
+		self._set_passkey_setting("passkey_allow_first_enrollment_on_weak_login", 1)
+
+		link = _generate_temporary_login_link(victim, expiry=10)
+		key = parse_qs(urlparse(link).query)["key"][0]
+		self._request("/")
+		frappe.local.flags.pop("passkey_login", None)
+		frappe.local.flags.pop("passkeys_password_login", None)
+		frappe.local.login_manager = LoginManager()
+		set_request(method="GET", path="/api/method/login")
+		frappe.local.form_dict.update(
+			{"usr": attacker, "pwd": PWD, "cmd": "frappe.www.login.login_via_key", "key": key}
+		)
+		frappe.local.login_manager.login()
+		self.assertEqual(frappe.session.user, attacker)
+		execute_cmd("frappe.www.login.login_via_key")
+
+		self.assertEqual(frappe.session.user, victim)
+		self.assertEqual(session.get_window(victim)["seeded_by"], "weak")
+		with self.assertRaises(PasskeyConfirmationRequired):
+			session.require_management_sudo(victim)
+		with self.assertRaises(PasskeyConfirmationRequired):
+			registration.begin_registration(flow="explicit")
 
 	def test_otp_fallback_marker_is_user_bound(self):
 		user = self._user(otp_capable=True)

@@ -8,6 +8,8 @@ never on a guest-request path, never from ``Host``/``X-Forwarded-*`` headers."""
 
 import importlib.util
 import re
+import subprocess
+import sys
 from urllib.parse import urlsplit
 
 import frappe
@@ -15,10 +17,60 @@ from frappe import _
 from frappe.utils import cint
 
 LOCALHOST_HOSTS = ("localhost", "127.0.0.1")
+WEBAUTHN_IMPORT_TIMEOUT = 30
+WEBAUTHN_IMPORT_STDERR_LIMIT = 4096
 
 
 def webauthn_available() -> bool:
 	return importlib.util.find_spec("webauthn") is not None
+
+
+def validate_webauthn_importable() -> None:
+	"""Refuse enablement unless the full ceremony engine imports in a child."""
+	if not sys.executable:
+		frappe.throw(
+			_(
+				"Cannot enable passkeys: the current Python executable is unavailable for the dependency check."
+			)
+		)
+	try:
+		result = subprocess.run(
+			[sys.executable, "-c", "import passkeys.engine"],
+			stdin=subprocess.DEVNULL,
+			stdout=subprocess.DEVNULL,
+			stderr=subprocess.PIPE,
+			check=False,
+			timeout=WEBAUTHN_IMPORT_TIMEOUT,
+		)
+	except subprocess.TimeoutExpired as exc:
+		_raise_webauthn_import_error(
+			_("the dependency check timed out after {0} seconds").format(WEBAUTHN_IMPORT_TIMEOUT),
+			exc.stderr,
+		)
+	except OSError as exc:
+		_raise_webauthn_import_error(_("the Python child process could not start: {0}").format(exc))
+	if result.returncode:
+		_raise_webauthn_import_error(
+			_("the dependency check exited with status {0}").format(result.returncode), result.stderr
+		)
+
+
+def _raise_webauthn_import_error(reason: str, stderr=None) -> None:
+	detail = _stderr_tail(stderr)
+	message = _(
+		"Cannot enable passkeys because the WebAuthn dependencies could not be imported: {0}."
+	).format(reason)
+	if detail:
+		message += " " + _("Error output: {0}").format(detail)
+	frappe.throw(message)
+
+
+def _stderr_tail(stderr) -> str:
+	if not stderr:
+		return ""
+	if isinstance(stderr, bytes):
+		return stderr[-WEBAUTHN_IMPORT_STDERR_LIMIT:].decode("utf-8", errors="replace").strip()
+	return str(stderr)[-WEBAUTHN_IMPORT_STDERR_LIMIT:].strip()
 
 
 def resolve_rp_id(settings) -> str | None:

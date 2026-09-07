@@ -34,7 +34,7 @@ chromium_only("passkey login degradation", () => {
 		cy.intercept("POST", "**/login").as("password_login");
 		cy.get("#login_email").type(USER);
 		cy.get("#login_password").type(PW());
-		cy.get(".form-login .btn-login, .btn-login").first().click();
+		cy.get("#login_password").closest("form").find("button[type='submit']").click();
 		cy.wait("@password_login").its("response.statusCode").should("be.within", 200, 299);
 		cy.location("pathname", { timeout: 20000 }).should("match", /^\/(app|desk)/);
 		cy.assert_logged_user(USER);

@@ -856,38 +856,27 @@ def _observe_2fa_floor_desync(settings) -> None:
 @rate_limit(limit=30, seconds=60)
 def get_app_translations(version: str | None = None):
 	"""Return the passkeys app's translation catalog for the request language.
-	Wraps ``get_translations_from_apps`` scoped to this app only; the
-	bundle fetches once, memoizes on the app-controlled ``version`` param, and
-	``Object.assign``-merges into ``frappe._messages`` (never clobbers the
-	Web-Form / core catalog). Without it, non-English v15/v16 sites see English
-	passkey UI — a release blocker.
+	Wraps ``get_translations_from_apps`` scoped to this app only; the bundle
+	merges it into ``frappe._messages`` without clobbering the Web-Form / core
+	catalog. ``version`` remains an accepted compatibility argument, but the
+	request language is not URL-keyed, so every response is non-cacheable.
 
 	Rate-limited like the sibling page-load-coupled guest endpoints (30/min/IP,
-	as ``begin_login``); a ``version``-keyed long-lived Cache-Control lets the
-	browser reuse the catalog until the client mints a new ``version`` (a new URL
-	⇒ a cache miss), so this endpoint is normally hit once per catalog release."""
+	as ``begin_login``)."""
 	refuse_if_core_native()  # dormant-shell: 417 the moment core is native
 	from frappe.translate import get_translations_from_apps
 
 	lang = getattr(frappe.local, "lang", None) or "en"
-	_set_translations_cache_control(version)
+	_set_translations_cache_control()
 	return get_translations_from_apps(lang, apps=["passkeys"])
 
 
-def _set_translations_cache_control(version) -> None:
-	"""Caching: the catalog is content-addressed by the client's ``version``
-	cache-buster (a new version ⇒ a new URL), so a versioned request is safely
-	immutable-cacheable for a year; an unversioned request gets a short private
-	cache. ``private`` (never ``public``) because the URL does not encode the
-	language — a shared cache must not serve one language's catalog to another.
-	Best-effort: a direct-call context without ``response_headers`` skips it."""
+def _set_translations_cache_control() -> None:
+	"""Prevent reuse because the response language is not encoded in the URL."""
 	headers = getattr(frappe.local, "response_headers", None)
 	if headers is None:
 		return
-	if version:
-		headers.set("Cache-Control", "private, max-age=31536000, immutable")
-	else:
-		headers.set("Cache-Control", "private, max-age=300")
+	headers.set("Cache-Control", "private, no-store")
 
 
 # ===========================================================================
@@ -951,18 +940,22 @@ def record_enforcement(event: str):
 	state.rate_limit_user("record_enforcement", 30, 3600)  # 30/hr/user
 	from passkeys import boot, notifications
 
-	if event == "defer" and not state.claim_enforcement_defer(user, frappe.session.sid):
+	if event not in boot.ENFORCE_EVENTS:
+		frappe.throw(_("Unknown enforcement event."), frappe.ValidationError)
+	settings = frappe.get_cached_doc("Passkey Settings")
+	credential_count = frappe.db.count("WebAuthn Credential", {"user": user, "enabled": 1})
+	verdict = boot.build_enforcement(user, settings, credential_count)
+	if event == "defer" and verdict["reason"] != "grace":
 		return {"enforcement_state": boot.get_enforcement_state(user)}
-	new_state = boot.record_enforcement_event(user, event)
-	if event == "incapable" and _incapable_policy_is_block_notify():
+	if event == "incapable" and verdict["reason"] not in ("grace", "blocking"):
+		return {"enforcement_state": boot.get_enforcement_state(user)}
+	if event == "defer":
+		if not state.claim_enforcement_defer(user, frappe.session.sid):
+			return {"enforcement_state": boot.get_enforcement_state(user)}
+		return {"enforcement_state": boot.record_enforcement_event(user, event)}
+	if verdict["incapable_policy"] == "block_notify":
 		notifications.record_enforcement_incapable(user)
-	return {"enforcement_state": new_state}
-
-
-def _incapable_policy_is_block_notify() -> bool:
-	return (
-		frappe.db.get_single_value("Passkey Settings", "passkey_enforce_incapable") == "Block + Notify Admin"
-	)
+	return {"enforcement_state": boot.get_enforcement_state(user)}
 
 
 # ---------------------------------------------------------------------------
