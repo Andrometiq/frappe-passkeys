@@ -13,6 +13,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
+const fs = require("node:fs");
+const vm = require("node:vm");
 const C = require("../../public/js/passkey_common.bundle.js");
 const M = require("../../public/js/passkey_manage_common.bundle.js");
 const H = require("../../public/js/passkey_headless.bundle.js");
@@ -151,6 +153,76 @@ test("completeUvSetup(): server and transport failures stay structured", async (
 });
 
 // ------------------------------------------------------- registration tests
+
+test("published register(): fallback sends attestation fields to verify_registration", async () => {
+	const fetchCalls = [];
+	const credential = {
+		id: "browser-registration",
+		rawId: new Uint8Array([1, 2]).buffer,
+		type: "public-key",
+		toJSON: null,
+		authenticatorAttachment: "platform",
+		getClientExtensionResults() { return { credProps: { rk: true } }; },
+		response: {
+			clientDataJSON: new Uint8Array([3]).buffer,
+			attestationObject: new Uint8Array([4, 5]).buffer,
+			getTransports() { return ["internal"]; },
+		},
+	};
+	const responses = [
+		{ ok: true, status: 200, body: { message: { state_id: "browser-state", options: CREATE_OPTIONS } } },
+		{ ok: true, status: 200, body: { message: { name: "WC-browser" } } },
+	];
+	const context = {
+		console,
+		Promise,
+		Uint8Array,
+		ArrayBuffer,
+		fetch(url, options) {
+			fetchCalls.push({ url, options });
+			const response = responses.shift();
+			return Promise.resolve({
+				ok: response.ok,
+				status: response.status,
+				json() { return Promise.resolve(response.body); },
+			});
+		},
+		navigator: {
+			credentials: {
+				create({ publicKey }) {
+					assert.strictEqual(publicKey.extensions.credProps, true);
+					return Promise.resolve(credential);
+				},
+			},
+		},
+		frappe: {
+			csrf_token: "csrf-token",
+			passkeys_common: C,
+			passkeys_manage_common: M,
+		},
+	};
+	context.window = context;
+	context.self = context;
+	const source = fs.readFileSync(require.resolve("../../public/js/passkey_headless.bundle.js"), "utf8");
+	vm.runInNewContext(source, context, { filename: "passkey_headless.bundle.js" });
+
+	const result = await context.frappe.passkeys.headless.register();
+	assert.strictEqual(result.name, "WC-browser");
+	assert.strictEqual(fetchCalls[1].url, "/api/method/" + MM.verifyRegistration);
+	const verifyBody = JSON.parse(fetchCalls[1].options.body);
+	assert.deepStrictEqual(JSON.parse(verifyBody.credential), {
+		id: "browser-registration",
+		rawId: "AQI",
+		type: "public-key",
+		authenticatorAttachment: "platform",
+		clientExtensionResults: { credProps: { rk: true } },
+		response: {
+			clientDataJSON: "Aw",
+			attestationObject: "BAU",
+			transports: ["internal"],
+		},
+	});
+});
 
 test("register(): begin -> create -> verify -> data; wire calls exact", async () => {
 	const post = makePost({

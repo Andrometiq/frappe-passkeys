@@ -10,6 +10,7 @@ import hashlib
 import time
 
 import frappe
+from frappe.utils import set_request
 
 from passkeys import session, state
 from passkeys.passkey import PasskeyConfirmationRequired
@@ -34,7 +35,9 @@ class SudoWindowTest(IntegrationTestCase):
 		state.clear_sudo_window(sid)
 
 	def _reset_login_signals(self):
+		set_request(method="POST", path="/")
 		frappe.local.flags.pop("passkey_login", None)
+		frappe.local.flags.pop("passkeys_password_login", None)
 		frappe.local.form_dict.pop("cmd", None)
 		frappe.local.form_dict.pop(session.GRANT_KWARG, None)
 
@@ -48,6 +51,8 @@ class SudoWindowTest(IntegrationTestCase):
 	def test_passkey_login_seeds_full_sudo(self):
 		user = self._user()
 		frappe.set_user(user)
+		set_request(method="POST", path="/api/method/login")
+		frappe.local.form_dict = frappe._dict(cmd="frappe.www.login.login_via_key")
 		frappe.local.flags.passkey_login = 1
 		session.seed_sudo_window()
 		window = session.get_window(user, self.sid)
@@ -63,6 +68,52 @@ class SudoWindowTest(IntegrationTestCase):
 		window = session.get_window(user, self.sid)
 		self.assertEqual(window["seeded_by"], "password")
 		self.assertTrue(session.has_management_sudo(user, self.sid))
+
+	def test_path_only_password_login_seeds_full_sudo(self):
+		user = self._user()
+		frappe.set_user(user)
+		set_request(method="POST", path="/api/method/login")
+		frappe.local.form_dict = frappe._dict()
+		session.seed_sudo_window()
+		window = session.get_window(user, self.sid)
+		self.assertEqual(window["seeded_by"], "password")
+		self.assertTrue(session.has_management_sudo(user, self.sid))
+
+	def test_app_password_login_flag_precedes_diverted_core_path(self):
+		user = self._user()
+		frappe.set_user(user)
+		set_request(method="POST", path="/api/method/login")
+		frappe.local.form_dict = frappe._dict(cmd="frappe.www.login.login_via_key")
+		frappe.local.flags.passkeys_password_login = 1
+		session.seed_sudo_window()
+		window = session.get_window(user, self.sid)
+		self.assertEqual(window["seeded_by"], "password")
+		self.assertTrue(session.has_management_sudo(user, self.sid))
+
+	def test_core_password_login_requires_exact_dispatch_shape(self):
+		for path in (
+			"/api/method/Login",
+			"/api/method/login/",
+			"/api/method/login/suffix",
+			"/api/v1/method/login",
+			"/api/v2/method/login",
+		):
+			with self.subTest(path=path):
+				set_request(method="POST", path=path)
+				frappe.local.form_dict = frappe._dict()
+				self.assertFalse(session._is_core_password_login())
+
+		set_request(method="POST", path="/api/method/login")
+		for cmd in ("frappe.www.login.login_via_key", "Login", "login "):
+			with self.subTest(cmd=cmd):
+				frappe.local.form_dict = frappe._dict(cmd=cmd)
+				self.assertFalse(session._is_core_password_login())
+
+		frappe.local.form_dict = frappe._dict(cmd="")
+		self.assertTrue(session._is_core_password_login())
+		set_request(method="POST", path="/an/arbitrary/path")
+		frappe.local.form_dict = frappe._dict(cmd="login")
+		self.assertTrue(session._is_core_password_login())
 
 	def test_weak_login_seeds_restricted_window(self):
 		user = self._user()

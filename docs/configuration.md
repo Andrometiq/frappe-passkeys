@@ -82,7 +82,7 @@ levers below go from least to most drastic. Pick the narrowest one that fits.
 
 1. **They said "I can't set one up here."** With the default *Incapable Device
    Policy* (**Degrade to Nudge**) the interstitial already let them through as a
-   dismissible nudge, and their administrators were emailed. Nothing is blocking;
+   dismissible nudge without emailing administrators. Nothing is blocking;
    help them enroll on a capable device (or issue a security key) when convenient.
    Only **Block + Notify Admin** keeps the gate up — the fixes below apply then.
 2. **Exempt this one user (one click).** Open the user's **User** form → the

@@ -46,12 +46,24 @@ release.
 
 ### Fixed
 
+- Server CI rejects failed, empty, or unrecognized test summaries even when the framework test
+  command exits successfully.
+- Enabling either login mode now checks the actual ceremony-engine imports in an isolated process,
+  catching installed but broken crypto dependencies without importing them into login hooks.
+- Registration on browsers without native credential JSON serialization now sends an attestation
+  response for explicit, headless, and conditional enrollment.
+- Enforcement reporting respects the current server verdict, and concurrent incapable-device
+  reports no longer send duplicate administrator advisories within the notification window.
+- Guest translation catalogs are not reused from an earlier request language.
 - First-factor passkey retries now replace spent or near-expiry ceremonies before prompting,
   preserve each gesture's exact state/options pair, and recover across repeated failures and bfcache
   restores without a page reload.
 
 ### Security
 
+- Core-login classification respects command dispatch precedence: an email-link or other diverted
+  request cannot obtain password-grade management sudo or consume an OTP fallback marker merely
+  by using the login URL.
 - First-factor verification failures now collapse to the uniform `AuthenticationError` wire type
   instead of exposing the engine's cause class to guests.
 - Privileged users (`System Manager`) are now inside enforcement scope by default, with no standing

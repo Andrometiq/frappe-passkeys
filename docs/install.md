@@ -32,8 +32,12 @@ bench --site <site> install-app passkeys
 `bench get-app` fetches the app and installs its Python requirements (the
 `webauthn` wheel). If the wheel is missing later — for example after a manual
 checkout — run `bench setup requirements` for the app before enabling any mode;
-the Passkey Settings validator refuses to enable passkeys when `webauthn` is not
-importable.
+the Passkey Settings validator checks package presence on enabled settings saves. When either
+login mode changes from off to on, it also verifies that the ceremony engine imports successfully
+in a bounded child process using the bench's Python interpreter. A failure refuses the save;
+crypto is never loaded into the serving worker by this check. Ordinary saves of already-enabled
+modes and mode disabling do not launch the probe. This is an enablement-time check, not ongoing
+dependency or worker-health monitoring.
 
 **Installing is not enabling.** `install-app` creates the DocTypes and the
 `Passkey Settings` single with every login mode **off**. Nothing about

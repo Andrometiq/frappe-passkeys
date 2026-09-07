@@ -196,19 +196,6 @@ class TestStateStore(IntegrationTestCase):
 		self.assertEqual(state.get_counter(name), 0)
 		self.assertEqual(state.bump_counter(name, ttl=60), 1)
 
-	def test_password_failure_throttle(self):
-		user = f"throttle-{frappe.generate_hash(length=8)}@example.com"
-		self.addCleanup(state.clear_password_failures, user)
-
-		for attempt in range(1, state.PASSWORD_FAILURE_LIMIT):
-			state.record_password_failure(user)
-			self.assertFalse(state.is_password_throttled(user), attempt)
-		state.record_password_failure(user)
-		self.assertTrue(state.is_password_throttled(user))
-
-		state.clear_password_failures(user)
-		self.assertFalse(state.is_password_throttled(user))
-
 	def test_claim_password_attempt_boundary_and_clear(self):
 		user = f"claim-{frappe.generate_hash(length=8)}@example.com"
 		self.addCleanup(state.clear_password_failures, user)

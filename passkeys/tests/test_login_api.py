@@ -401,18 +401,34 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		self.assertIsInstance(catalog, dict)
 		self.assertEqual(catalog.get("Sign in with a passkey"), "Se connecter avec une clé d'accès")
 
-	def test_translations_versioned_request_sets_long_lived_cache_control(self):
-		"""A version-keyed request carries a long-lived immutable Cache-Control
-		(the client mints a new version ⇒ a new URL ⇒ a cache miss)."""
+	def test_translations_requests_are_not_cached_with_or_without_version(self):
 		from werkzeug.datastructures import Headers
 
 		frappe.set_user("Guest")
 		self._request("/api/method/passkeys.passkey.get_app_translations")
-		frappe.local.response_headers = Headers()
-		passkey.get_app_translations(version="42")
-		cache_control = frappe.local.response_headers.get("Cache-Control")
-		self.assertIsNotNone(cache_control)
-		self.assertIn("immutable", cache_control)
+		for version in (None, "42"):
+			with self.subTest(version=version):
+				frappe.local.response_headers = Headers()
+				passkey.get_app_translations(version=version)
+				self.assertEqual(
+					frappe.local.response_headers.get("Cache-Control"),
+					"private, no-store",
+				)
+
+	def test_translations_follow_each_request_language(self):
+		frappe.set_user("Guest")
+		self._request("/api/method/passkeys.passkey.get_app_translations")
+		with patch(
+			"frappe.translate.get_translations_from_apps",
+			side_effect=lambda lang, apps: {"language": lang, "apps": apps},
+		) as get_translations:
+			frappe.local.lang = "fr"
+			french = passkey.get_app_translations(version="same-url")
+			frappe.local.lang = "de"
+			german = passkey.get_app_translations(version="same-url")
+		self.assertEqual(french, {"language": "fr", "apps": ["passkeys"]})
+		self.assertEqual(german, {"language": "de", "apps": ["passkeys"]})
+		self.assertEqual(get_translations.call_count, 2)
 
 	def test_translations_endpoint_is_rate_limited(self):
 		"""The previously-unlimited guest translations endpoint now carries
@@ -692,8 +708,11 @@ class LoginCeremonyTest(WebAuthnAssertMixin, IntegrationTestCase):
 		name = frappe.db.get_value("WebAuthn Credential", {"user": user}, "name")
 		self.addCleanup(state.clear_password_failures, user)
 		for _ in range(state.PASSWORD_FAILURE_LIMIT):
-			state.record_password_failure(user)
-		self.assertTrue(state.is_password_throttled(user))
+			state.claim_password_attempt(user)
+		self.assertEqual(
+			state.get_counter(state.PASSWORD_FAILURE_PREFIX + user),
+			state.PASSWORD_FAILURE_LIMIT,
+		)
 
 		begun, binder = self._begin()
 		credential = self._assert(auth, begun["options"], uv=True, sign_count=5)

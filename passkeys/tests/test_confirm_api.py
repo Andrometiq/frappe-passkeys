@@ -755,8 +755,11 @@ class ConfirmationTest(WebAuthnAssertMixin, IntegrationTestCase):
 		frappe.set_user(user)
 		self.addCleanup(state.clear_password_failures, user)
 		for _ in range(state.PASSWORD_FAILURE_LIMIT):
-			state.record_password_failure(user)
-		self.assertTrue(state.is_password_throttled(user))
+			state.claim_password_attempt(user)
+		self.assertEqual(
+			state.get_counter(state.PASSWORD_FAILURE_PREFIX + user),
+			state.PASSWORD_FAILURE_LIMIT,
+		)
 
 		with self.assertRaises(frappe.AuthenticationError) as ctx:
 			self._reauth(PWD)  # the CORRECT password — still refused because throttled
